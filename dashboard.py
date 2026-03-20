@@ -310,10 +310,20 @@ if mapas_disponibles and not df_filtrado.empty:
                 control_scale=True
             )
             
-            # Agregar capas base
-            folium.TileLayer('OpenStreetMap').add_to(m)
-            folium.TileLayer('Stamen Terrain').add_to(m)
-            folium.TileLayer('CartoDB positron').add_to(m)
+            # Agregar capas base con atribuciones correctas
+            folium.TileLayer('OpenStreetMap', name='OpenStreetMap').add_to(m)
+            folium.TileLayer(
+                tiles='https://stamen-tiles.a.ssl.fastly.net/terrain/{z}/{x}/{y}.png',
+                attr='Map tiles by <a href="http://stamen.com">Stamen Design</a>, under <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a>. Data by <a href="http://openstreetmap.org">OpenStreetMap</a>, under <a href="http://www.openstreetmap.org/copyright">ODbL</a>.',
+                name='Stamen Terrain'
+            ).add_to(m)
+            folium.TileLayer(
+                tiles='https://cartodb-basemaps-{s}.global.ssl.fastly.net/light_all/{z}/{x}/{y}.png',
+                attr='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                name='CartoDB Positron'
+            ).add_to(m)
+            
+            # Agregar control de capas
             folium.LayerControl().add_to(m)
             
             # Agregar capa de departamentos si está disponible
