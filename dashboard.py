@@ -5,6 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 import numpy as np
+import os
 
 # Importar funciones desde matrix.py
 from matrix import load_project_data, get_summary_statistics, get_projects_by_status, get_projects_by_department
