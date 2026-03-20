@@ -169,8 +169,7 @@ with col3:
 
 with col4:
     monto_total = df_filtrado['MONTO_MODIFICADO'].sum()
-    st.metric("Monto Total de Contratos", f"${monto_total:,.2f}")
-
+    st.metric("Monto Total de Contratos", f"Q{monto_total:,.2f}")
 st.markdown("---")
 
 # ============================================
@@ -218,7 +217,7 @@ with col2:
         y='INSTITUCION',
         orientation='h',
         title="Distribución de Montos por Institución",
-        labels={'MONTO_MODIFICADO': 'Monto Total ($)', 'INSTITUCION': 'Institución'},
+        labels={'MONTO_MODIFICADO': 'Monto Total (Q)', 'INSTITUCION': 'Institución'},
         color='MONTO_MODIFICADO',
         color_continuous_scale='Blues'
     )
@@ -249,7 +248,7 @@ fig_scatter.update_layout(showlegend=True)
 st.plotly_chart(fig_scatter, use_container_width=True)
 
 # ============================================
-# 🗺️ MAPAS INTERACTIVOS CON ARCHIVOS GEOJSON
+# 🗺️ MAPAS INTERACTIVOS
 # ============================================
 st.header("🗺️ Visualización Geográfica de Proyectos")
 
@@ -262,65 +261,29 @@ try:
     mapas_disponibles = True
 except ImportError:
     mapas_disponibles = False
-    st.warning("⚠️ Las librerías para mapas no están instaladas. Ejecuta: pip install folium streamlit-folium")
 
-# Función para cargar archivos GeoJSON/TopoJSON
+# Función para cargar archivos JSON (sin mensajes)
 def load_geojson(file_path):
-    """Carga archivo GeoJSON o TopoJSON"""
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            
-        # Verificar si es TopoJSON (tiene objetos 'objects' y 'arcs')
-        if 'objects' in data and 'arcs' in data:
-            st.info(f"📁 El archivo {file_path} es TopoJSON. Se usará como referencia de bordes.")
-            # Para TopoJSON, lo usamos directamente en el mapa
-            return data
-        # Si es GeoJSON estándar
-        elif 'type' in data and data['type'] == 'FeatureCollection':
-            return data
-        else:
-            return data
-    except FileNotFoundError:
-        return None
-    except Exception as e:
-        st.warning(f"Error al cargar {file_path}: {e}")
-        return None
-
-# Función para extraer nombres de departamentos del TopoJSON
-def extract_departamentos_from_topojson(topojson_data):
-    """Extrae los nombres de departamentos del TopoJSON"""
-    try:
-        if topojson_data and 'objects' in topojson_data:
-            # Buscar en los objetos por geometrías
-            for obj_name, obj_content in topojson_data['objects'].items():
-                if 'geometries' in obj_content:
-                    departamentos = []
-                    for geom in obj_content['geometries']:
-                        if 'properties' in geom and 'Departamento' in geom['properties']:
-                            departamentos.append(geom['properties']['Departamento'])
-                    if departamentos:
-                        return sorted(departamentos)
-        return None
-    except Exception as e:
-        st.warning(f"Error al extraer departamentos: {e}")
+            return json.load(f)
+    except:
         return None
 
 if mapas_disponibles and not df_filtrado.empty:
     
-    # Cargar archivos GeoJSON
+    # Cargar archivos JSON (sin mensajes)
     geojson_departamentos = load_geojson('deptos.json')
-    geojson_municipios = load_geojson('municipios_INE.json')
     
-    if geojson_departamentos:
-        st.success("✅ Archivos cargados correctamente")
-        
-        # Verificar si es TopoJSON
-        if 'objects' in geojson_departamentos:
-            st.info("ℹ️ Se detectó formato TopoJSON. Los bordes de departamentos se mostrarán correctamente.")
+    # Filtrar proyectos con coordenadas válidas (convertir a numérico por si acaso)
+    proyectos_con_coords = df_filtrado.copy()
     
-    # Filtrar proyectos con coordenadas válidas
-    proyectos_con_coords = df_filtrado.dropna(subset=['LATITUD', 'LONGITUD']).copy()
+    # Asegurar que LATITUD y LONGITUD sean numéricas
+    proyectos_con_coords['LATITUD'] = pd.to_numeric(proyectos_con_coords['LATITUD'], errors='coerce')
+    proyectos_con_coords['LONGITUD'] = pd.to_numeric(proyectos_con_coords['LONGITUD'], errors='coerce')
+    
+    # Eliminar filas sin coordenadas
+    proyectos_con_coords = proyectos_con_coords.dropna(subset=['LATITUD', 'LONGITUD'])
     
     # Calcular centro del mapa
     if len(proyectos_con_coords) > 0:
@@ -330,8 +293,8 @@ if mapas_disponibles and not df_filtrado.empty:
         center_lat = 15.5
         center_lon = -90.25
     
-    # Tabs para diferentes tipos de visualización
-    tab1, tab2, tab3, tab4 = st.tabs(["📍 Mapa de Proyectos", "🗺️ Mapa Coroplético", "🔥 Mapa de Calor", "📊 Análisis Geográfico"])
+    # Tabs
+    tab1, tab2, tab3 = st.tabs(["📍 Mapa de Proyectos", "🔥 Mapa de Calor", "📊 Análisis Geográfico"])
     
     with tab1:
         st.subheader("📍 Ubicación de Proyectos")
@@ -344,13 +307,7 @@ if mapas_disponibles and not df_filtrado.empty:
                 control_scale=True
             )
             
-            # Agregar capas base
-            folium.TileLayer('OpenStreetMap', name='OpenStreetMap').add_to(m)
-            
-            # Agregar control de capas
-            folium.LayerControl().add_to(m)
-            
-            # Agregar capa de departamentos si está disponible
+            # Agregar capa de departamentos si está disponible (sin mensajes)
             if geojson_departamentos:
                 try:
                     folium.GeoJson(
@@ -363,8 +320,8 @@ if mapas_disponibles and not df_filtrado.empty:
                             'fillOpacity': 0
                         }
                     ).add_to(m)
-                except Exception as e:
-                    st.warning(f"No se pudo agregar la capa de departamentos: {e}")
+                except:
+                    pass
             
             # Crear cluster de marcadores
             marker_cluster = MarkerCluster().add_to(m)
@@ -383,16 +340,11 @@ if mapas_disponibles and not df_filtrado.empty:
                 
                 popup_text = f"""
                 <div style="font-family: monospace; min-width: 250px;">
-                    <b style="font-size: 14px;">{row['NOMBRE_PROYECTO']}</b><br>
-                    <hr style="margin: 5px 0;">
+                    <b>{row['NOMBRE_PROYECTO']}</b><br>
                     <b>Institución:</b> {row['INSTITUCION']}<br>
-                    <b>Tipo:</b> {row['TIPO_PROYECTO']}<br>
                     <b>Ubicación:</b> {row['MUNICIPIO']}, {row['DEPARTAMENTO']}<br>
                     <b>Avance Físico:</b> {row['AVANCE_FISICO']:.1f}%<br>
-                    <b>Avance Financiero:</b> {row['AVANCE_FINANCIERO']:.1f}%<br>
-                    <b>Monto:</b> ${row['MONTO_MODIFICADO']:,.2f}<br>
-                    <b>Empresa:</b> {row['EMPRESA']}<br>
-                    <b>Estatus:</b> {row['ESTATUS']}
+                    <b>Monto:</b> Q{row['MONTO_MODIFICADO']:,.2f}
                 </div>
                 """
                 
@@ -413,91 +365,12 @@ if mapas_disponibles and not df_filtrado.empty:
             # Mostrar mapa
             folium_static(m, width=1200, height=600)
         else:
-            st.warning("⚠️ No hay proyectos con coordenadas válidas para mostrar en el mapa.")
+            st.warning("⚠️ No hay proyectos con coordenadas válidas")
     
     with tab2:
-        st.subheader("🗺️ Mapa Coroplético por Departamento")
-        
-        # Preparar datos agregados por departamento
-        proyectos_por_dep = df_filtrado.groupby('DEPARTAMENTO').agg({
-            'ID': 'count',
-            'MONTO_MODIFICADO': 'sum',
-            'AVANCE_FISICO': 'mean'
-        }).reset_index()
-        proyectos_por_dep.columns = ['DEPARTAMENTO', 'CANTIDAD', 'MONTO_TOTAL', 'AVANCE_PROMEDIO']
-        
-        # Mostrar tabla de datos por departamento
-        st.subheader("📊 Datos por Departamento")
-        st.dataframe(
-            proyectos_por_dep.style.format({
-                'MONTO_TOTAL': '${:,.2f}',
-                'AVANCE_PROMEDIO': '{:.1f}%'
-            }),
-            use_container_width=True
-        )
-        
-        # Gráfico de barras por departamento
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            fig_cantidad = px.bar(
-                proyectos_por_dep.sort_values('CANTIDAD', ascending=True),
-                x='CANTIDAD',
-                y='DEPARTAMENTO',
-                orientation='h',
-                title="Cantidad de Proyectos por Departamento",
-                color='CANTIDAD',
-                color_continuous_scale='Viridis'
-            )
-            st.plotly_chart(fig_cantidad, use_container_width=True)
-        
-        with col2:
-            fig_monto = px.bar(
-                proyectos_por_dep.sort_values('MONTO_TOTAL', ascending=True),
-                x='MONTO_TOTAL',
-                y='DEPARTAMENTO',
-                orientation='h',
-                title="Monto Total por Departamento",
-                color='MONTO_TOTAL',
-                color_continuous_scale='Blues'
-            )
-            st.plotly_chart(fig_monto, use_container_width=True)
-        
-        # Si tenemos GeoJSON, intentar mostrar mapa coroplético
-        if geojson_departamentos:
-            st.subheader("🗺️ Visualización en Mapa")
-            
-            # Crear un mapa simple sin coropletas (para evitar errores)
-            m_simple = folium.Map(
-                location=[center_lat, center_lon],
-                zoom_start=7,
-                control_scale=True
-            )
-            
-            try:
-                # Intentar agregar la capa de departamentos
-                folium.GeoJson(
-                    geojson_departamentos,
-                    name='Departamentos',
-                    style_function=lambda x: {
-                        'fillColor': '#87CEEB',
-                        'color': '#000000',
-                        'weight': 1,
-                        'fillOpacity': 0.3
-                    }
-                ).add_to(m_simple)
-                
-                folium_static(m_simple, width=1200, height=500)
-                
-            except Exception as e:
-                st.info(f"ℹ️ No se pudo generar el mapa interactivo: {e}")
-                st.info("📌 Los datos por departamento se muestran en las tablas y gráficos de arriba.")
-    
-    with tab3:
         st.subheader("🔥 Mapa de Calor - Densidad de Proyectos")
         
         if len(proyectos_con_coords) > 0:
-            # Preparar datos para mapa de calor
             heat_data = [[row['LATITUD'], row['LONGITUD']] for idx, row in proyectos_con_coords.iterrows()]
             
             heat_map = folium.Map(
@@ -505,13 +378,11 @@ if mapas_disponibles and not df_filtrado.empty:
                 zoom_start=9
             )
             
-            # Agregar mapa de calor
             HeatMap(
                 heat_data,
                 radius=15,
                 blur=10,
-                min_opacity=0.3,
-                max_zoom=12
+                min_opacity=0.3
             ).add_to(heat_map)
             
             folium_static(heat_map, width=1200, height=600)
@@ -521,72 +392,67 @@ if mapas_disponibles and not df_filtrado.empty:
             top_municipios = proyectos_con_coords['MUNICIPIO'].value_counts().head(10)
             municipios_df = pd.DataFrame({
                 'Municipio': top_municipios.index,
-                'Cantidad de Proyectos': top_municipios.values
+                'Cantidad': top_municipios.values
             })
             st.bar_chart(municipios_df.set_index('Municipio'))
         else:
-            st.warning("⚠️ No hay datos suficientes para generar el mapa de calor")
+            st.info("ℹ️ No hay datos para el mapa de calor")
     
-    with tab4:
-        st.subheader("📊 Análisis Geográfico Detallado")
+    with tab3:
+        st.subheader("📊 Análisis Geográfico")
         
-        # Tabla detallada por departamento
-        st.subheader("📋 Resumen Detallado por Departamento")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            proyectos_dep = df_filtrado.groupby('DEPARTAMENTO').size().reset_index(name='Cantidad')
+            proyectos_dep = proyectos_dep.sort_values('Cantidad', ascending=True)
+            fig_dep = px.bar(
+                proyectos_dep,
+                x='Cantidad',
+                y='DEPARTAMENTO',
+                orientation='h',
+                title="Proyectos por Departamento",
+                color='Cantidad',
+                color_continuous_scale='Viridis'
+            )
+            st.plotly_chart(fig_dep, use_container_width=True)
+        
+        with col2:
+    monto_dep = df_filtrado.groupby('DEPARTAMENTO')['MONTO_MODIFICADO'].sum().reset_index()
+    monto_dep = monto_dep.sort_values('MONTO_MODIFICADO', ascending=True)
+    fig_monto = px.bar(
+        monto_dep,
+        x='MONTO_MODIFICADO',
+        y='DEPARTAMENTO',
+        orientation='h',
+        title="Monto por Departamento",
+        labels={'MONTO_MODIFICADO': 'Monto Total (Q)'},
+        color='MONTO_MODIFICADO',
+        color_continuous_scale='Blues'
+    )
+    st.plotly_chart(fig_monto, use_container_width=True)
+        
+        # Tabla resumen
+        st.subheader("📋 Resumen por Departamento")
         resumen_dep = df_filtrado.groupby('DEPARTAMENTO').agg({
             'NOMBRE_PROYECTO': 'count',
             'MONTO_MODIFICADO': 'sum',
             'AVANCE_FISICO': 'mean',
-            'AVANCE_FINANCIERO': 'mean',
             'EMPRESA': 'nunique'
         }).reset_index()
-        
-        resumen_dep.columns = ['Departamento', 'N° Proyectos', 'Monto Total', 
-                               'Avance Físico Prom.', 'Avance Financ. Prom.', 'N° Empresas']
+        resumen_dep.columns = ['Departamento', 'N° Proyectos', 'Monto Total', 'Avance Promedio', 'N° Empresas']
         
         st.dataframe(
             resumen_dep.style.format({
-                'Monto Total': '${:,.2f}',
-                'Avance Físico Prom.': '{:.1f}%',
-                'Avance Financ. Prom.': '{:.1f}%'
+                'Monto Total': 'Q{:,.2f}',
+                'Avance Promedio': '{:.1f}%'
             }),
             use_container_width=True
         )
-        
-        # Análisis por municipio
-        if len(proyectos_con_coords['MUNICIPIO'].unique()) > 5:
-            st.subheader("🏘️ Top 10 Municipios por Inversión")
-            top_municipios_monto = proyectos_con_coords.groupby('MUNICIPIO')['MONTO_MODIFICADO'].sum().nlargest(10).reset_index()
-            
-            fig_municipios = px.bar(
-                top_municipios_monto,
-                x='MONTO_MODIFICADO',
-                y='MUNICIPIO',
-                orientation='h',
-                title="Top 10 Municipios por Monto Invertido",
-                color='MONTO_MODIFICADO',
-                color_continuous_scale='Greens'
-            )
-            st.plotly_chart(fig_municipios, use_container_width=True)
-        
-        # Gráfico de avance por departamento
-        st.subheader("📈 Avance Físico Promedio por Departamento")
-        fig_avance = px.bar(
-            resumen_dep.sort_values('Avance Físico Prom.', ascending=True),
-            x='Avance Físico Prom.',
-            y='Departamento',
-            orientation='h',
-            title="Avance Físico Promedio por Departamento",
-            color='Avance Físico Prom.',
-            color_continuous_scale='RdYlGn',
-            range_color=[0, 100]
-        )
-        st.plotly_chart(fig_avance, use_container_width=True)
 
 else:
     if df_filtrado.empty:
-        st.info("ℹ️ No hay proyectos con los filtros seleccionados.")
-    else:
-        st.warning("⚠️ No se pudieron cargar los mapas. Verifica la instalación de folium.")
+        st.info("ℹ️ No hay proyectos con los filtros seleccionados")
 # ============================================
 # TABLA DE DATOS
 # ============================================
@@ -609,7 +475,7 @@ st.dataframe(
     df_filtrado[columnas_mostrar].style.format({
         'AVANCE_FISICO': '{:.1f}%',
         'AVANCE_FINANCIERO': '{:.1f}%',
-        'MONTO_MODIFICADO': '${:,.2f}'
+        'MONTO_MODIFICADO': 'Q{:,.2f}'
     }),
     use_container_width=True,
     height=400
@@ -671,13 +537,14 @@ with st.expander("ℹ️ Información del Dashboard"):
     st.markdown(f"""
     **Resumen General de la Selección Actual:**
     - Total de proyectos: {stats.get('total_proyectos', 0)}
-    - Monto total: ${stats.get('total_monto', 0):,.2f}
+    - Monto total: Q{stats.get('total_monto', 0):,.2f}
     - Avance físico promedio: {stats.get('avance_fisico_promedio', 0):.1f}%
     - Avance financiero promedio: {stats.get('avance_financiero_promedio', 0):.1f}%
     - Proyectos completados (≥95%): {stats.get('proyectos_completados', 0)}
     - Proyectos críticos (<30%): {stats.get('proyectos_criticos', 0)}
     - Empresas contratistas: {stats.get('total_empresas', 0)}
     - Instituciones: {stats.get('total_instituciones', 0)}
+    """)
     
     **Cómo usar el dashboard:**
     1. **Selecciona primero el año** - esto determina las opciones disponibles en los siguientes filtros
