@@ -55,14 +55,12 @@ def load_data():
         'SALDO PENDIENTE POR PAGAR': np.random.uniform(0, 2000000, 100),
     }
     
-    df = pd.DataFrame(data)
+def load_data():
+    # Si tus datos están en Excel
+    df = pd.read_excel('followingmatrix.xlsx')
     
-    # Calcular algunas métricas adicionales
-    df['EJECUCION_FISICA'] = df['% AVANCE FISICO REAL']
-    df['EJECUCION_FINANCIERA'] = df['% AVANCE FINANCIERO']
-    df['BRECHA_EJECUCION'] = df['EJECUCION_FINANCIERA'] - df['EJECUCION_FISICA']
-    df['ESTADO_EJECUCION'] = np.where(df['EJECUCION_FISICA'] >= 95, 'Completado',
-                               np.where(df['EJECUCION_FISICA'] >= 50, 'En progreso', 'Inicio'))
+    # O si están en CSV
+    # df = pd.read_csv('tu_archivo.csv')
     
     return df
 
