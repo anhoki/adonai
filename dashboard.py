@@ -7,7 +7,7 @@ from datetime import datetime
 import numpy as np
 import os
 
-# Importar funciones desde matrix.py
+# Importar desde matrix.py
 from matrix import load_project_data, get_summary_statistics, get_projects_by_status, get_projects_by_department
 
 # Configuración de la página
@@ -43,62 +43,112 @@ except Exception as e:
     st.info("📝 Asegúrate de que el archivo 'followingmatrix.xlsx' existe en el mismo directorio")
     st.stop()
 
-# Sidebar - Filtros
+# ============================================
+# FILTROS JERÁRQUICOS - AÑO PRIMERO
+# ============================================
 st.sidebar.header("🔍 Filtros")
 
-# Obtener estadísticas resumidas
-stats = get_summary_statistics(df)
+# FILTRO 1: AÑO (Principal)
+st.sidebar.subheader("📅 1. Seleccionar Año")
+años_disponibles = sorted(df['ANIO_INICIO'].unique())
+años_seleccionados = st.sidebar.multiselect(
+    "Año de inicio",
+    options=años_disponibles,
+    default=años_disponibles,
+    help="Selecciona uno o más años para filtrar los proyectos"
+)
 
-# Filtros en el sidebar
-instituciones = st.sidebar.multiselect(
+# Filtrar por año primero
+df_filtrado_año = df[df['ANIO_INICIO'].isin(años_seleccionados)]
+
+# Verificar si hay datos después del filtro de año
+if df_filtrado_año.empty:
+    st.warning("⚠️ No hay proyectos en los años seleccionados. Por favor, selecciona otros años.")
+    st.stop()
+
+# FILTRO 2: INSTITUCIÓN (dependiente del año)
+st.sidebar.subheader("🏛️ 2. Seleccionar Institución")
+instituciones_disponibles = sorted(df_filtrado_año['INSTITUCION'].unique())
+instituciones_seleccionadas = st.sidebar.multiselect(
     "Institución",
-    options=df['INSTITUCION'].unique(),
-    default=df['INSTITUCION'].unique()
+    options=instituciones_disponibles,
+    default=instituciones_disponibles,
+    help="Las instituciones disponibles dependen del año seleccionado"
 )
 
-tipos_proyecto = st.sidebar.multiselect(
+# Filtrar por institución
+df_filtrado_inst = df_filtrado_año[df_filtrado_año['INSTITUCION'].isin(instituciones_seleccionadas)]
+
+# Verificar si hay datos después del filtro de institución
+if df_filtrado_inst.empty:
+    st.warning("⚠️ No hay proyectos para las instituciones seleccionadas en los años elegidos.")
+    st.stop()
+
+# FILTRO 3: Tipo de Proyecto
+st.sidebar.subheader("📁 3. Seleccionar Tipo de Proyecto")
+tipos_disponibles = sorted(df_filtrado_inst['TIPO_PROYECTO'].unique())
+tipos_seleccionados = st.sidebar.multiselect(
     "Tipo de Proyecto",
-    options=df['TIPO_PROYECTO'].unique(),
-    default=df['TIPO_PROYECTO'].unique()
+    options=tipos_disponibles,
+    default=tipos_disponibles
 )
 
-departamentos = st.sidebar.multiselect(
+# Filtrar por tipo de proyecto
+df_filtrado_tipo = df_filtrado_inst[df_filtrado_inst['TIPO_PROYECTO'].isin(tipos_seleccionados)]
+
+# FILTRO 4: Departamento
+st.sidebar.subheader("🗺️ 4. Seleccionar Departamento")
+departamentos_disponibles = sorted(df_filtrado_tipo['DEPARTAMENTO'].unique())
+departamentos_seleccionados = st.sidebar.multiselect(
     "Departamento",
-    options=df['DEPARTAMENTO'].unique(),
-    default=df['DEPARTAMENTO'].unique()
+    options=departamentos_disponibles,
+    default=departamentos_disponibles
 )
 
-estatus = st.sidebar.multiselect(
+# Filtrar por departamento
+df_filtrado_dep = df_filtrado_tipo[df_filtrado_tipo['DEPARTAMENTO'].isin(departamentos_seleccionados)]
+
+# FILTRO 5: Estatus
+st.sidebar.subheader("📌 5. Seleccionar Estatus")
+estatus_disponibles = sorted(df_filtrado_dep['ESTATUS'].unique())
+estatus_seleccionados = st.sidebar.multiselect(
     "Estatus del Proyecto",
-    options=df['ESTATUS'].unique(),
-    default=df['ESTATUS'].unique()
+    options=estatus_disponibles,
+    default=estatus_disponibles
 )
 
+# Filtrar por estatus
+df_filtrado = df_filtrado_dep[df_filtrado_dep['ESTATUS'].isin(estatus_seleccionados)]
+
+# FILTRO 6: Rango de Avance
+st.sidebar.subheader("📈 6. Rango de Avance Físico")
 rango_avance = st.sidebar.slider(
-    "Rango de Avance Físico (%)",
+    "Porcentaje de avance (%)",
     min_value=0,
     max_value=100,
     value=(0, 100)
 )
 
-# Aplicar filtros
-df_filtrado = df[
-    (df['INSTITUCION'].isin(instituciones)) &
-    (df['TIPO_PROYECTO'].isin(tipos_proyecto)) &
-    (df['DEPARTAMENTO'].isin(departamentos)) &
-    (df['ESTATUS'].isin(estatus)) &
-    (df['AVANCE_FISICO'].between(rango_avance[0], rango_avance[1]))
+# Filtrar por rango de avance
+df_filtrado = df_filtrado[
+    df_filtrado['AVANCE_FISICO'].between(rango_avance[0], rango_avance[1])
 ]
 
-# Continuar con el resto del dashboard...
-# [Aquí va todo el código del dashboard que ya te proporcioné,
-#  pero usando los nombres de columnas actualizados:
-#  - AVANCE_FISICO en lugar de '% AVANCE FISICO REAL'
-#  - AVANCE_FINANCIERO en lugar de '% AVANCE FINANCIERO'
-#  - INSTITUCION en lugar de 'INSTITUCIÓN'
-#  - etc.]
+# Mostrar resumen de filtros aplicados
+st.sidebar.markdown("---")
+st.sidebar.subheader("📊 Resumen de filtros")
+st.sidebar.info(f"""
+**Años:** {len(años_seleccionados)} seleccionados  
+**Instituciones:** {len(instituciones_seleccionadas)} de {len(instituciones_disponibles)}  
+**Tipos:** {len(tipos_seleccionados)}  
+**Departamentos:** {len(departamentos_seleccionados)}  
+**Estatus:** {len(estatus_seleccionados)}  
+**Proyectos resultantes:** {len(df_filtrado)}
+""")
 
-# Métricas principales
+# ============================================
+# MÉTRICAS PRINCIPALES
+# ============================================
 st.header("📈 Indicadores Clave")
 
 col1, col2, col3, col4 = st.columns(4)
@@ -121,44 +171,58 @@ with col4:
 
 st.markdown("---")
 
-# Gráficos principales
-col1, col2 = st.columns(2)
+# ============================================
+# GRÁFICOS
+# ============================================
 
-with col1:
-    st.subheader("📊 Avance por Tipo de Proyecto")
-    fig_avance_tipo = px.bar(
-        df_filtrado.groupby('TIPO_PROYECTO')[['AVANCE_FISICO', 'AVANCE_FINANCIERO']].mean().reset_index(),
-        x='TIPO_PROYECTO',
-        y=['AVANCE_FISICO', 'AVANCE_FINANCIERO'],
-        barmode='group',
-        title="Avance Promedio por Tipo de Proyecto"
-    )
-    st.plotly_chart(fig_avance_tipo, use_container_width=True)
-
-with col2:
-    st.subheader("💰 Montos por Institución")
-    montos_inst = df_filtrado.groupby('INSTITUCION')['MONTO_MODIFICADO'].sum().reset_index()
-    fig_montos = px.pie(
-        montos_inst,
-        values='MONTO_MODIFICADO',
-        names='INSTITUCION',
-        title="Distribución de Montos por Institución"
-    )
-    st.plotly_chart(fig_montos, use_container_width=True)
-
-# Gráfico de evolución temporal
+# Gráfico 1: Evolución por año (mostrar años seleccionados)
 st.subheader("📅 Evolución de Proyectos por Año")
 proyectos_por_año = df_filtrado.groupby('ANIO_INICIO').size().reset_index(name='Cantidad')
 fig_temporal = px.line(
     proyectos_por_año,
     x='ANIO_INICIO',
     y='Cantidad',
-    title="Cantidad de Proyectos Iniciados por Año",
-    markers=True
+    title=f"Proyectos Iniciados ({', '.join(map(str, años_seleccionados))})",
+    markers=True,
+    line_shape='linear'
 )
+fig_temporal.update_traces(line=dict(width=3), marker=dict(size=10))
 st.plotly_chart(fig_temporal, use_container_width=True)
 
-# Matriz de avance
+# Gráficos en dos columnas
+col1, col2 = st.columns(2)
+
+with col1:
+    st.subheader("📊 Avance por Tipo de Proyecto")
+    avance_por_tipo = df_filtrado.groupby('TIPO_PROYECTO')[['AVANCE_FISICO', 'AVANCE_FINANCIERO']].mean().reset_index()
+    fig_avance_tipo = px.bar(
+        avance_por_tipo,
+        x='TIPO_PROYECTO',
+        y=['AVANCE_FISICO', 'AVANCE_FINANCIERO'],
+        barmode='group',
+        title="Avance Promedio por Tipo de Proyecto",
+        labels={'value': 'Porcentaje (%)', 'variable': 'Tipo de Avance'},
+        color_discrete_map={'AVANCE_FISICO': '#2E86AB', 'AVANCE_FINANCIERO': '#A23B72'}
+    )
+    st.plotly_chart(fig_avance_tipo, use_container_width=True)
+
+with col2:
+    st.subheader("💰 Montos por Institución")
+    montos_inst = df_filtrado.groupby('INSTITUCION')['MONTO_MODIFICADO'].sum().reset_index()
+    montos_inst = montos_inst.sort_values('MONTO_MODIFICADO', ascending=True)
+    fig_montos = px.bar(
+        montos_inst,
+        x='MONTO_MODIFICADO',
+        y='INSTITUCION',
+        orientation='h',
+        title="Distribución de Montos por Institución",
+        labels={'MONTO_MODIFICADO': 'Monto Total ($)', 'INSTITUCION': 'Institución'},
+        color='MONTO_MODIFICADO',
+        color_continuous_scale='Blues'
+    )
+    st.plotly_chart(fig_montos, use_container_width=True)
+
+# Gráfico 3: Matriz de avance
 st.subheader("🎯 Matriz de Avance Físico vs Financiero")
 fig_scatter = px.scatter(
     df_filtrado,
@@ -166,34 +230,59 @@ fig_scatter = px.scatter(
     y='AVANCE_FINANCIERO',
     color='ESTATUS',
     size='MONTO_MODIFICADO',
-    hover_data=['NOMBRE_PROYECTO', 'INSTITUCION'],
-    title="Relación entre Avance Físico y Financiero"
+    hover_data=['NOMBRE_PROYECTO', 'INSTITUCION', 'TIPO_PROYECTO'],
+    title="Relación entre Avance Físico y Financiero",
+    labels={'AVANCE_FISICO': 'Avance Físico (%)', 'AVANCE_FINANCIERO': 'Avance Financiero (%)'}
 )
 fig_scatter.add_trace(
     go.Scatter(
         x=[0, 100],
         y=[0, 100],
         mode='lines',
-        name='Línea de Referencia',
-        line=dict(dash='dash', color='gray')
+        name='Línea de Referencia (Ideal)',
+        line=dict(dash='dash', color='gray', width=2)
     )
 )
+fig_scatter.update_layout(showlegend=True)
 st.plotly_chart(fig_scatter, use_container_width=True)
 
-# Tabla de datos filtrados
+# Gráfico 4: Distribución por departamento
+st.subheader("🗺️ Proyectos por Departamento")
+proyectos_dep = df_filtrado.groupby('DEPARTAMENTO').agg({
+    'ID': 'count',
+    'MONTO_MODIFICADO': 'sum',
+    'AVANCE_FISICO': 'mean'
+}).reset_index()
+proyectos_dep.columns = ['Departamento', 'Cantidad', 'Monto Total', 'Avance Promedio']
+
+fig_dep = px.bar(
+    proyectos_dep,
+    x='Departamento',
+    y='Cantidad',
+    color='Avance Promedio',
+    title="Cantidad de Proyectos por Departamento",
+    text='Cantidad',
+    color_continuous_scale='Viridis'
+)
+fig_dep.update_traces(textposition='outside')
+st.plotly_chart(fig_dep, use_container_width=True)
+
+# ============================================
+# TABLA DE DATOS
+# ============================================
 st.subheader("📋 Detalle de Proyectos")
 
 # Seleccionar columnas para mostrar
 columnas_mostrar = [
-    'ID', 'NOMBRE_PROYECTO', 'INSTITUCION', 'TIPO_PROYECTO',
+    'ID', 'NOMBRE_PROYECTO', 'ANIO_INICIO', 'INSTITUCION', 'TIPO_PROYECTO',
     'DEPARTAMENTO', 'MUNICIPIO', 'AVANCE_FISICO', 'AVANCE_FINANCIERO',
     'ESTATUS', 'MONTO_MODIFICADO', 'EMPRESA'
 ]
 
 # Añadir barra de búsqueda
-busqueda = st.text_input("🔍 Buscar proyecto:", "")
+busqueda = st.text_input("🔍 Buscar por nombre de proyecto:", "")
 if busqueda:
-    df_filtrado = df_filtrado[df_filtrado['NOMBRE_PROYECTO'].str.contains(busqueda, case=False)]
+    df_filtrado = df_filtrado[df_filtrado['NOMBRE_PROYECTO'].str.contains(busqueda, case=False, na=False)]
 
 # Mostrar tabla
 st.dataframe(
@@ -206,7 +295,9 @@ st.dataframe(
     height=400
 )
 
-# Proyectos con alertas
+# ============================================
+# ALERTAS
+# ============================================
 st.subheader("⚠️ Alertas de Proyectos")
 
 # Proyectos con baja ejecución
@@ -218,13 +309,28 @@ proyectos_alerta = df_filtrado[
 if len(proyectos_alerta) > 0:
     st.warning(f"🚨 {len(proyectos_alerta)} proyectos con avance físico menor al 30%")
     st.dataframe(
-        proyectos_alerta[['NOMBRE_PROYECTO', 'INSTITUCION', 'AVANCE_FISICO', 'AVANCE_FINANCIERO']],
+        proyectos_alerta[['NOMBRE_PROYECTO', 'INSTITUCION', 'ANIO_INICIO', 'AVANCE_FISICO', 'AVANCE_FINANCIERO', 'EMPRESA']],
         use_container_width=True
     )
 else:
     st.success("✅ No hay proyectos con alertas críticas")
 
-# Exportar datos
+# Proyectos con retraso en ejecución financiera
+proyectos_retraso = df_filtrado[
+    (df_filtrado['AVANCE_FINANCIERO'] < df_filtrado['AVANCE_FISICO'] - 20)
+]
+
+if len(proyectos_retraso) > 0:
+    st.info(f"📉 {len(proyectos_retraso)} proyectos con retraso financiero (avance financiero menor al avance físico)")
+    with st.expander("Ver detalles"):
+        st.dataframe(
+            proyectos_retraso[['NOMBRE_PROYECTO', 'INSTITUCION', 'AVANCE_FISICO', 'AVANCE_FINANCIERO']],
+            use_container_width=True
+        )
+
+# ============================================
+# EXPORTAR DATOS
+# ============================================
 st.sidebar.markdown("---")
 st.sidebar.subheader("📥 Exportar Datos")
 
@@ -233,25 +339,35 @@ if st.sidebar.button("Exportar a CSV"):
     st.sidebar.download_button(
         label="Descargar CSV",
         data=csv,
-        file_name=f"dashboard_proyectos_{datetime.now().strftime('%Y%m%d')}.csv",
+        file_name=f"dashboard_proyectos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
         mime="text/csv"
     )
 
-# Información adicional
+# ============================================
+# INFORMACIÓN ADICIONAL
+# ============================================
 with st.expander("ℹ️ Información del Dashboard"):
+    stats = get_summary_statistics(df_filtrado)
     st.markdown(f"""
-    **Resumen General:**
+    **Resumen General de la Selección Actual:**
     - Total de proyectos: {stats.get('total_proyectos', 0)}
     - Monto total: ${stats.get('total_monto', 0):,.2f}
-    - Proyectos completados: {stats.get('proyectos_completados', 0)}
+    - Avance físico promedio: {stats.get('avance_fisico_promedio', 0):.1f}%
+    - Avance financiero promedio: {stats.get('avance_financiero_promedio', 0):.1f}%
+    - Proyectos completados (≥95%): {stats.get('proyectos_completados', 0)}
     - Proyectos críticos (<30%): {stats.get('proyectos_criticos', 0)}
     - Empresas contratistas: {stats.get('total_empresas', 0)}
+    - Instituciones: {stats.get('total_instituciones', 0)}
     
-    **Cómo usar:**
-    1. Utiliza los filtros en el panel izquierdo para seleccionar los proyectos de interés
-    2. Explora los diferentes gráficos para obtener insights
-    3. Revisa la tabla de detalle para ver información específica
-    4. Exporta los datos filtrados si es necesario
+    **Cómo usar el dashboard:**
+    1. **Selecciona primero el año** - esto determina las opciones disponibles en los siguientes filtros
+    2. Luego elige la institución (solo muestra las que tienen proyectos en el año seleccionado)
+    3. Continúa con tipo de proyecto, departamento y estatus
+    4. Ajusta el rango de avance si lo deseas
+    5. Explora los gráficos y la tabla de detalle
+    6. Exporta los datos filtrados si es necesario
+    
+    **Nota:** Los filtros son jerárquicos - cada selección afecta las opciones disponibles en los filtros siguientes.
     """)
 
 st.markdown("---")
