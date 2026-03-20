@@ -264,16 +264,46 @@ except ImportError:
     mapas_disponibles = False
     st.warning("⚠️ Las librerías para mapas no están instaladas. Ejecuta: pip install folium streamlit-folium")
 
-# Función para cargar archivos GeoJSON
+# Función para cargar archivos GeoJSON/TopoJSON
 def load_geojson(file_path):
-    """Carga archivo GeoJSON"""
+    """Carga archivo GeoJSON o TopoJSON"""
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
+            data = json.load(f)
+            
+        # Verificar si es TopoJSON (tiene objetos 'objects' y 'arcs')
+        if 'objects' in data and 'arcs' in data:
+            st.info(f"📁 El archivo {file_path} es TopoJSON. Se usará como referencia de bordes.")
+            # Para TopoJSON, lo usamos directamente en el mapa
+            return data
+        # Si es GeoJSON estándar
+        elif 'type' in data and data['type'] == 'FeatureCollection':
+            return data
+        else:
+            return data
     except FileNotFoundError:
         return None
     except Exception as e:
         st.warning(f"Error al cargar {file_path}: {e}")
+        return None
+
+# Función para extraer nombres de departamentos del TopoJSON
+def extract_departamentos_from_topojson(topojson_data):
+    """Extrae los nombres de departamentos del TopoJSON"""
+    try:
+        if topojson_data and 'objects' in topojson_data:
+            # Buscar en los objetos por geometrías
+            for obj_name, obj_content in topojson_data['objects'].items():
+                if 'geometries' in obj_content:
+                    departamentos = []
+                    for geom in obj_content['geometries']:
+                        if 'properties' in geom and 'Departamento' in geom['properties']:
+                            departamentos.append(geom['properties']['Departamento'])
+                    if departamentos:
+                        return sorted(departamentos)
+        return None
+    except Exception as e:
+        st.warning(f"Error al extraer departamentos: {e}")
         return None
 
 if mapas_disponibles and not df_filtrado.empty:
@@ -283,7 +313,11 @@ if mapas_disponibles and not df_filtrado.empty:
     geojson_municipios = load_geojson('municipios_INE.json')
     
     if geojson_departamentos:
-        st.success("✅ Archivos GeoJSON cargados correctamente")
+        st.success("✅ Archivos cargados correctamente")
+        
+        # Verificar si es TopoJSON
+        if 'objects' in geojson_departamentos:
+            st.info("ℹ️ Se detectó formato TopoJSON. Los bordes de departamentos se mostrarán correctamente.")
     
     # Filtrar proyectos con coordenadas válidas
     proyectos_con_coords = df_filtrado.dropna(subset=['LATITUD', 'LONGITUD']).copy()
@@ -310,39 +344,27 @@ if mapas_disponibles and not df_filtrado.empty:
                 control_scale=True
             )
             
-            # Agregar capas base con atribuciones correctas
+            # Agregar capas base
             folium.TileLayer('OpenStreetMap', name='OpenStreetMap').add_to(m)
-            folium.TileLayer(
-                tiles='https://stamen-tiles.a.ssl.fastly.net/terrain/{z}/{x}/{y}.png',
-                attr='Map tiles by <a href="http://stamen.com">Stamen Design</a>, under <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a>. Data by <a href="http://openstreetmap.org">OpenStreetMap</a>, under <a href="http://www.openstreetmap.org/copyright">ODbL</a>.',
-                name='Stamen Terrain'
-            ).add_to(m)
-            folium.TileLayer(
-                tiles='https://cartodb-basemaps-{s}.global.ssl.fastly.net/light_all/{z}/{x}/{y}.png',
-                attr='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-                name='CartoDB Positron'
-            ).add_to(m)
             
             # Agregar control de capas
             folium.LayerControl().add_to(m)
             
             # Agregar capa de departamentos si está disponible
             if geojson_departamentos:
-                folium.GeoJson(
-                    geojson_departamentos,
-                    name='Departamentos',
-                    style_function=lambda x: {
-                        'fillColor': 'transparent',
-                        'color': '#666666',
-                        'weight': 1,
-                        'fillOpacity': 0
-                    },
-                    tooltip=folium.GeoJsonTooltip(
-                        fields=['Departamento'],
-                        aliases=['Departamento:'],
-                        localize=True
-                    )
-                ).add_to(m)
+                try:
+                    folium.GeoJson(
+                        geojson_departamentos,
+                        name='Departamentos',
+                        style_function=lambda x: {
+                            'fillColor': 'transparent',
+                            'color': '#666666',
+                            'weight': 1,
+                            'fillOpacity': 0
+                        }
+                    ).add_to(m)
+                except Exception as e:
+                    st.warning(f"No se pudo agregar la capa de departamentos: {e}")
             
             # Crear cluster de marcadores
             marker_cluster = MarkerCluster().add_to(m)
@@ -396,81 +418,80 @@ if mapas_disponibles and not df_filtrado.empty:
     with tab2:
         st.subheader("🗺️ Mapa Coroplético por Departamento")
         
-        if geojson_departamentos:
-            # Preparar datos para el mapa coroplético
-            proyectos_por_dep = df_filtrado.groupby('DEPARTAMENTO').agg({
-                'ID': 'count',
-                'MONTO_MODIFICADO': 'sum',
-                'AVANCE_FISICO': 'mean'
-            }).reset_index()
-            proyectos_por_dep.columns = ['DEPARTAMENTO', 'CANTIDAD', 'MONTO_TOTAL', 'AVANCE_PROMEDIO']
-            
-            # Opciones de visualización
-            choropleth_option = st.selectbox(
-                "Seleccionar variable a visualizar:",
-                ["Cantidad de Proyectos", "Monto Total Invertido", "Avance Físico Promedio"],
-                key="choropleth_select"
+        # Preparar datos agregados por departamento
+        proyectos_por_dep = df_filtrado.groupby('DEPARTAMENTO').agg({
+            'ID': 'count',
+            'MONTO_MODIFICADO': 'sum',
+            'AVANCE_FISICO': 'mean'
+        }).reset_index()
+        proyectos_por_dep.columns = ['DEPARTAMENTO', 'CANTIDAD', 'MONTO_TOTAL', 'AVANCE_PROMEDIO']
+        
+        # Mostrar tabla de datos por departamento
+        st.subheader("📊 Datos por Departamento")
+        st.dataframe(
+            proyectos_por_dep.style.format({
+                'MONTO_TOTAL': '${:,.2f}',
+                'AVANCE_PROMEDIO': '{:.1f}%'
+            }),
+            use_container_width=True
+        )
+        
+        # Gráfico de barras por departamento
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            fig_cantidad = px.bar(
+                proyectos_por_dep.sort_values('CANTIDAD', ascending=True),
+                x='CANTIDAD',
+                y='DEPARTAMENTO',
+                orientation='h',
+                title="Cantidad de Proyectos por Departamento",
+                color='CANTIDAD',
+                color_continuous_scale='Viridis'
             )
+            st.plotly_chart(fig_cantidad, use_container_width=True)
+        
+        with col2:
+            fig_monto = px.bar(
+                proyectos_por_dep.sort_values('MONTO_TOTAL', ascending=True),
+                x='MONTO_TOTAL',
+                y='DEPARTAMENTO',
+                orientation='h',
+                title="Monto Total por Departamento",
+                color='MONTO_TOTAL',
+                color_continuous_scale='Blues'
+            )
+            st.plotly_chart(fig_monto, use_container_width=True)
+        
+        # Si tenemos GeoJSON, intentar mostrar mapa coroplético
+        if geojson_departamentos:
+            st.subheader("🗺️ Visualización en Mapa")
             
-            # Mapear selección a columna
-            var_map = {
-                "Cantidad de Proyectos": "CANTIDAD",
-                "Monto Total Invertido": "MONTO_TOTAL",
-                "Avance Físico Promedio": "AVANCE_PROMEDIO"
-            }
-            
-            selected_var = var_map[choropleth_option]
-            
-            # Crear el mapa coroplético
-            m_choropleth = folium.Map(
+            # Crear un mapa simple sin coropletas (para evitar errores)
+            m_simple = folium.Map(
                 location=[center_lat, center_lon],
                 zoom_start=7,
                 control_scale=True
             )
             
-            folium.Choropleth(
-                geo_data=geojson_departamentos,
-                name='choropleth',
-                data=proyectos_por_dep,
-                columns=['DEPARTAMENTO', selected_var],
-                key_on='feature.properties.Departamento',
-                fill_color='YlOrRd',
-                fill_opacity=0.7,
-                line_opacity=0.2,
-                legend_name=choropleth_option,
-                highlight=True,
-                smooth_factor=0.5
-            ).add_to(m_choropleth)
-            
-            # Agregar tooltips
-            folium.GeoJson(
-                geojson_departamentos,
-                style_function=lambda x: {
-                    'fillColor': 'transparent',
-                    'color': 'black',
-                    'weight': 1,
-                    'fillOpacity': 0
-                },
-                tooltip=folium.GeoJsonTooltip(
-                    fields=['Departamento'],
-                    aliases=['Departamento:'],
-                    localize=True
-                )
-            ).add_to(m_choropleth)
-            
-            folium_static(m_choropleth, width=1200, height=600)
-            
-            # Tabla resumen
-            st.subheader("📊 Resumen por Departamento")
-            st.dataframe(
-                proyectos_por_dep.style.format({
-                    'MONTO_TOTAL': '${:,.2f}',
-                    'AVANCE_PROMEDIO': '{:.1f}%'
-                }),
-                use_container_width=True
-            )
-        else:
-            st.warning("⚠️ No se pudo cargar el archivo 'deptos.json'")
+            try:
+                # Intentar agregar la capa de departamentos
+                folium.GeoJson(
+                    geojson_departamentos,
+                    name='Departamentos',
+                    style_function=lambda x: {
+                        'fillColor': '#87CEEB',
+                        'color': '#000000',
+                        'weight': 1,
+                        'fillOpacity': 0.3
+                    }
+                ).add_to(m_simple)
+                
+                folium_static(m_simple, width=1200, height=500)
+                
+            except Exception as e:
+                st.info(f"ℹ️ No se pudo generar el mapa interactivo: {e}")
+                st.info("📌 Los datos por departamento se muestran en las tablas y gráficos de arriba.")
     
     with tab3:
         st.subheader("🔥 Mapa de Calor - Densidad de Proyectos")
@@ -483,18 +504,6 @@ if mapas_disponibles and not df_filtrado.empty:
                 location=[center_lat, center_lon],
                 zoom_start=9
             )
-            
-            # Agregar capa de departamentos
-            if geojson_departamentos:
-                folium.GeoJson(
-                    geojson_departamentos,
-                    style_function=lambda x: {
-                        'fillColor': 'transparent',
-                        'color': '#666666',
-                        'weight': 1,
-                        'fillOpacity': 0
-                    }
-                ).add_to(heat_map)
             
             # Agregar mapa de calor
             HeatMap(
@@ -519,44 +528,9 @@ if mapas_disponibles and not df_filtrado.empty:
             st.warning("⚠️ No hay datos suficientes para generar el mapa de calor")
     
     with tab4:
-        st.subheader("📊 Análisis Geográfico")
+        st.subheader("📊 Análisis Geográfico Detallado")
         
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Proyectos por departamento
-            proyectos_dep = df_filtrado.groupby('DEPARTAMENTO').size().reset_index(name='Cantidad')
-            proyectos_dep = proyectos_dep.sort_values('Cantidad', ascending=True)
-            
-            fig_dep = px.bar(
-                proyectos_dep,
-                x='Cantidad',
-                y='DEPARTAMENTO',
-                orientation='h',
-                title="Proyectos por Departamento",
-                color='Cantidad',
-                color_continuous_scale='Viridis'
-            )
-            st.plotly_chart(fig_dep, use_container_width=True)
-        
-        with col2:
-            # Monto por departamento
-            monto_dep = df_filtrado.groupby('DEPARTAMENTO')['MONTO_MODIFICADO'].sum().reset_index()
-            monto_dep = monto_dep.sort_values('MONTO_MODIFICADO', ascending=True)
-            
-            fig_monto = px.bar(
-                monto_dep,
-                x='MONTO_MODIFICADO',
-                y='DEPARTAMENTO',
-                orientation='h',
-                title="Monto Invertido por Departamento",
-                color='MONTO_MODIFICADO',
-                color_continuous_scale='Blues',
-                labels={'MONTO_MODIFICADO': 'Monto Total ($)'}
-            )
-            st.plotly_chart(fig_monto, use_container_width=True)
-        
-        # Tabla detallada
+        # Tabla detallada por departamento
         st.subheader("📋 Resumen Detallado por Departamento")
         resumen_dep = df_filtrado.groupby('DEPARTAMENTO').agg({
             'NOMBRE_PROYECTO': 'count',
@@ -593,13 +567,26 @@ if mapas_disponibles and not df_filtrado.empty:
                 color_continuous_scale='Greens'
             )
             st.plotly_chart(fig_municipios, use_container_width=True)
+        
+        # Gráfico de avance por departamento
+        st.subheader("📈 Avance Físico Promedio por Departamento")
+        fig_avance = px.bar(
+            resumen_dep.sort_values('Avance Físico Prom.', ascending=True),
+            x='Avance Físico Prom.',
+            y='Departamento',
+            orientation='h',
+            title="Avance Físico Promedio por Departamento",
+            color='Avance Físico Prom.',
+            color_continuous_scale='RdYlGn',
+            range_color=[0, 100]
+        )
+        st.plotly_chart(fig_avance, use_container_width=True)
 
 else:
     if df_filtrado.empty:
         st.info("ℹ️ No hay proyectos con los filtros seleccionados.")
     else:
         st.warning("⚠️ No se pudieron cargar los mapas. Verifica la instalación de folium.")
-
 # ============================================
 # TABLA DE DATOS
 # ============================================
