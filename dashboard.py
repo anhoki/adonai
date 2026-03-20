@@ -329,10 +329,19 @@ if mapas_disponibles and not df_filtrado.empty:
     # Tabs
     tab1, tab2, tab3 = st.tabs(["📍 Mapa de Proyectos", "🔥 Mapa de Calor", "📊 Análisis Geográfico"])
     
-    with tab1:
+       with tab1:
         st.subheader("📍 Ubicación de Proyectos")
         
+        # Mostrar diagnóstico en la interfaz principal
+        st.write(f"**Diagnóstico rápido:**")
+        st.write(f"- Total proyectos filtrados: {len(df_filtrado)}")
+        st.write(f"- Proyectos con coordenadas después de conversión: {len(proyectos_con_coords)}")
+        
         if len(proyectos_con_coords) > 0:
+            # Mostrar ejemplos de coordenadas que sí tienen
+            with st.expander("Ver ejemplos de coordenadas que sí tienen datos"):
+                st.dataframe(proyectos_con_coords[['NOMBRE_PROYECTO', 'LATITUD', 'LONGITUD']].head(10))
+            
             # Crear mapa base
             m = folium.Map(
                 location=[center_lat, center_lon],
@@ -368,6 +377,7 @@ if mapas_disponibles and not df_filtrado.empty:
             }
             
             # Agregar marcadores
+            marcadores_agregados = 0
             for idx, row in proyectos_con_coords.iterrows():
                 color = status_colors.get(row['ESTATUS'], 'gray')
                 
@@ -387,6 +397,9 @@ if mapas_disponibles and not df_filtrado.empty:
                     tooltip=row['NOMBRE_PROYECTO'],
                     icon=folium.Icon(color=color, icon='info-sign', prefix='glyphicon')
                 ).add_to(marker_cluster)
+                marcadores_agregados += 1
+            
+            st.write(f"- Marcadores agregados al mapa: {marcadores_agregados}")
             
             # Estadísticas
             col1, col2 = st.columns(2)
@@ -398,7 +411,17 @@ if mapas_disponibles and not df_filtrado.empty:
             # Mostrar mapa
             folium_static(m, width=1200, height=600)
         else:
-            st.warning("⚠️ No hay proyectos con coordenadas válidas")
+            st.error("❌ NO HAY proyectos con coordenadas válidas después del filtrado")
+            st.write("**Posibles causas:**")
+            st.write("1. Los filtros están excluyendo todos los proyectos con coordenadas")
+            st.write("2. Las coordenadas no se cargaron correctamente desde el Excel")
+            st.write("3. Las columnas se llaman diferente en el Excel")
+            
+            # Mostrar los primeros proyectos que sí tienen coordenadas en el dataframe original
+            with st.expander("Ver proyectos con coordenadas en el Excel original (sin filtros)"):
+                original_con_coords = df.dropna(subset=['LATITUD', 'LONGITUD'])
+                st.write(f"Proyectos con coordenadas en Excel original: {len(original_con_coords)}")
+                st.dataframe(original_con_coords[['NOMBRE_PROYECTO', 'LATITUD', 'LONGITUD']].head(10))
     
     with tab2:
         st.subheader("🔥 Mapa de Calor - Densidad de Proyectos")
