@@ -5,15 +5,14 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 import numpy as np
-import os
-
+import json
 
 # Importar desde matrix.py
-from matrix import load_project_data, get_summary_statistics, get_projects_by_status, get_projects_by_department
+from matrix import load_project_data, get_summary_statistics
 
 # Configuración de la página
 st.set_page_config(
-    page_title="Dashboard de Proyectos",
+    page_title="Dashboard de Proyectos - Guatemala",
     page_icon="📊",
     layout="wide"
 )
@@ -22,7 +21,9 @@ st.set_page_config(
 st.title("📊 Dashboard de Seguimiento de Proyectos")
 st.markdown("---")
 
-# Cargar datos desde el archivo Excel
+# ============================================
+# CARGA DE DATOS
+# ============================================
 @st.cache_data
 def load_data():
     """
@@ -173,10 +174,10 @@ with col4:
 st.markdown("---")
 
 # ============================================
-# GRÁFICOS
+# GRÁFICOS PRINCIPALES
 # ============================================
 
-# Gráfico 1: Evolución por año (mostrar años seleccionados)
+# Gráfico 1: Evolución por año
 st.subheader("📅 Evolución de Proyectos por Año")
 proyectos_por_año = df_filtrado.groupby('ANIO_INICIO').size().reset_index(name='Cantidad')
 fig_temporal = px.line(
@@ -247,26 +248,347 @@ fig_scatter.add_trace(
 fig_scatter.update_layout(showlegend=True)
 st.plotly_chart(fig_scatter, use_container_width=True)
 
-# Gráfico 4: Distribución por departamento
-st.subheader("🗺️ Proyectos por Departamento")
-proyectos_dep = df_filtrado.groupby('DEPARTAMENTO').agg({
-    'ID': 'count',
-    'MONTO_MODIFICADO': 'sum',
-    'AVANCE_FISICO': 'mean'
-}).reset_index()
-proyectos_dep.columns = ['Departamento', 'Cantidad', 'Monto Total', 'Avance Promedio']
+# ============================================
+# 🗺️ MAPAS INTERACTIVOS CON ARCHIVOS GEOJSON
+# ============================================
+st.header("🗺️ Visualización Geográfica de Proyectos")
 
-fig_dep = px.bar(
-    proyectos_dep,
-    x='Departamento',
-    y='Cantidad',
-    color='Avance Promedio',
-    title="Cantidad de Proyectos por Departamento",
-    text='Cantidad',
-    color_continuous_scale='Viridis'
-)
-fig_dep.update_traces(textposition='outside')
-st.plotly_chart(fig_dep, use_container_width=True)
+# Importar librerías para mapas
+try:
+    import folium
+    from streamlit_folium import folium_static
+    from folium.plugins import MarkerCluster, HeatMap
+    
+    mapas_disponibles = True
+except ImportError:
+    mapas_disponibles = False
+    st.warning("⚠️ Las librerías para mapas no están instaladas. Ejecuta: pip install folium streamlit-folium")
+
+# Función para cargar archivos GeoJSON
+def load_geojson(file_path):
+    """Carga archivo GeoJSON"""
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return None
+    except Exception as e:
+        st.warning(f"Error al cargar {file_path}: {e}")
+        return None
+
+if mapas_disponibles and not df_filtrado.empty:
+    
+    # Cargar archivos GeoJSON
+    geojson_departamentos = load_geojson('deptos.json')
+    geojson_municipios = load_geojson('municipios_INE.json')
+    
+    if geojson_departamentos:
+        st.success("✅ Archivos GeoJSON cargados correctamente")
+    
+    # Filtrar proyectos con coordenadas válidas
+    proyectos_con_coords = df_filtrado.dropna(subset=['LATITUD', 'LONGITUD']).copy()
+    
+    # Calcular centro del mapa
+    if len(proyectos_con_coords) > 0:
+        center_lat = proyectos_con_coords['LATITUD'].mean()
+        center_lon = proyectos_con_coords['LONGITUD'].mean()
+    else:
+        center_lat = 15.5
+        center_lon = -90.25
+    
+    # Tabs para diferentes tipos de visualización
+    tab1, tab2, tab3, tab4 = st.tabs(["📍 Mapa de Proyectos", "🗺️ Mapa Coroplético", "🔥 Mapa de Calor", "📊 Análisis Geográfico"])
+    
+    with tab1:
+        st.subheader("📍 Ubicación de Proyectos")
+        
+        if len(proyectos_con_coords) > 0:
+            # Crear mapa base
+            m = folium.Map(
+                location=[center_lat, center_lon],
+                zoom_start=9,
+                control_scale=True
+            )
+            
+            # Agregar capas base
+            folium.TileLayer('OpenStreetMap').add_to(m)
+            folium.TileLayer('Stamen Terrain').add_to(m)
+            folium.TileLayer('CartoDB positron').add_to(m)
+            folium.LayerControl().add_to(m)
+            
+            # Agregar capa de departamentos si está disponible
+            if geojson_departamentos:
+                folium.GeoJson(
+                    geojson_departamentos,
+                    name='Departamentos',
+                    style_function=lambda x: {
+                        'fillColor': 'transparent',
+                        'color': '#666666',
+                        'weight': 1,
+                        'fillOpacity': 0
+                    },
+                    tooltip=folium.GeoJsonTooltip(
+                        fields=['Departamento'],
+                        aliases=['Departamento:'],
+                        localize=True
+                    )
+                ).add_to(m)
+            
+            # Crear cluster de marcadores
+            marker_cluster = MarkerCluster().add_to(m)
+            
+            # Definir colores según estatus
+            status_colors = {
+                'En ejecución': 'blue',
+                'Finalizado': 'green',
+                'Suspendido': 'red',
+                'En planificación': 'orange'
+            }
+            
+            # Agregar marcadores
+            for idx, row in proyectos_con_coords.iterrows():
+                color = status_colors.get(row['ESTATUS'], 'gray')
+                
+                popup_text = f"""
+                <div style="font-family: monospace; min-width: 250px;">
+                    <b style="font-size: 14px;">{row['NOMBRE_PROYECTO']}</b><br>
+                    <hr style="margin: 5px 0;">
+                    <b>Institución:</b> {row['INSTITUCION']}<br>
+                    <b>Tipo:</b> {row['TIPO_PROYECTO']}<br>
+                    <b>Ubicación:</b> {row['MUNICIPIO']}, {row['DEPARTAMENTO']}<br>
+                    <b>Avance Físico:</b> {row['AVANCE_FISICO']:.1f}%<br>
+                    <b>Avance Financiero:</b> {row['AVANCE_FINANCIERO']:.1f}%<br>
+                    <b>Monto:</b> ${row['MONTO_MODIFICADO']:,.2f}<br>
+                    <b>Empresa:</b> {row['EMPRESA']}<br>
+                    <b>Estatus:</b> {row['ESTATUS']}
+                </div>
+                """
+                
+                folium.Marker(
+                    location=[row['LATITUD'], row['LONGITUD']],
+                    popup=folium.Popup(popup_text, max_width=300),
+                    tooltip=row['NOMBRE_PROYECTO'],
+                    icon=folium.Icon(color=color, icon='info-sign', prefix='glyphicon')
+                ).add_to(marker_cluster)
+            
+            # Estadísticas
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Proyectos con ubicación", len(proyectos_con_coords))
+            with col2:
+                st.metric("Total proyectos", len(df_filtrado))
+            
+            # Mostrar mapa
+            folium_static(m, width=1200, height=600)
+        else:
+            st.warning("⚠️ No hay proyectos con coordenadas válidas para mostrar en el mapa.")
+    
+    with tab2:
+        st.subheader("🗺️ Mapa Coroplético por Departamento")
+        
+        if geojson_departamentos:
+            # Preparar datos para el mapa coroplético
+            proyectos_por_dep = df_filtrado.groupby('DEPARTAMENTO').agg({
+                'ID': 'count',
+                'MONTO_MODIFICADO': 'sum',
+                'AVANCE_FISICO': 'mean'
+            }).reset_index()
+            proyectos_por_dep.columns = ['DEPARTAMENTO', 'CANTIDAD', 'MONTO_TOTAL', 'AVANCE_PROMEDIO']
+            
+            # Opciones de visualización
+            choropleth_option = st.selectbox(
+                "Seleccionar variable a visualizar:",
+                ["Cantidad de Proyectos", "Monto Total Invertido", "Avance Físico Promedio"],
+                key="choropleth_select"
+            )
+            
+            # Mapear selección a columna
+            var_map = {
+                "Cantidad de Proyectos": "CANTIDAD",
+                "Monto Total Invertido": "MONTO_TOTAL",
+                "Avance Físico Promedio": "AVANCE_PROMEDIO"
+            }
+            
+            selected_var = var_map[choropleth_option]
+            
+            # Crear el mapa coroplético
+            m_choropleth = folium.Map(
+                location=[center_lat, center_lon],
+                zoom_start=7,
+                control_scale=True
+            )
+            
+            folium.Choropleth(
+                geo_data=geojson_departamentos,
+                name='choropleth',
+                data=proyectos_por_dep,
+                columns=['DEPARTAMENTO', selected_var],
+                key_on='feature.properties.Departamento',
+                fill_color='YlOrRd',
+                fill_opacity=0.7,
+                line_opacity=0.2,
+                legend_name=choropleth_option,
+                highlight=True,
+                smooth_factor=0.5
+            ).add_to(m_choropleth)
+            
+            # Agregar tooltips
+            folium.GeoJson(
+                geojson_departamentos,
+                style_function=lambda x: {
+                    'fillColor': 'transparent',
+                    'color': 'black',
+                    'weight': 1,
+                    'fillOpacity': 0
+                },
+                tooltip=folium.GeoJsonTooltip(
+                    fields=['Departamento'],
+                    aliases=['Departamento:'],
+                    localize=True
+                )
+            ).add_to(m_choropleth)
+            
+            folium_static(m_choropleth, width=1200, height=600)
+            
+            # Tabla resumen
+            st.subheader("📊 Resumen por Departamento")
+            st.dataframe(
+                proyectos_por_dep.style.format({
+                    'MONTO_TOTAL': '${:,.2f}',
+                    'AVANCE_PROMEDIO': '{:.1f}%'
+                }),
+                use_container_width=True
+            )
+        else:
+            st.warning("⚠️ No se pudo cargar el archivo 'deptos.json'")
+    
+    with tab3:
+        st.subheader("🔥 Mapa de Calor - Densidad de Proyectos")
+        
+        if len(proyectos_con_coords) > 0:
+            # Preparar datos para mapa de calor
+            heat_data = [[row['LATITUD'], row['LONGITUD']] for idx, row in proyectos_con_coords.iterrows()]
+            
+            heat_map = folium.Map(
+                location=[center_lat, center_lon],
+                zoom_start=9
+            )
+            
+            # Agregar capa de departamentos
+            if geojson_departamentos:
+                folium.GeoJson(
+                    geojson_departamentos,
+                    style_function=lambda x: {
+                        'fillColor': 'transparent',
+                        'color': '#666666',
+                        'weight': 1,
+                        'fillOpacity': 0
+                    }
+                ).add_to(heat_map)
+            
+            # Agregar mapa de calor
+            HeatMap(
+                heat_data,
+                radius=15,
+                blur=10,
+                min_opacity=0.3,
+                max_zoom=12
+            ).add_to(heat_map)
+            
+            folium_static(heat_map, width=1200, height=600)
+            
+            # Top municipios
+            st.subheader("🏙️ Top 10 Municipios con más proyectos")
+            top_municipios = proyectos_con_coords['MUNICIPIO'].value_counts().head(10)
+            municipios_df = pd.DataFrame({
+                'Municipio': top_municipios.index,
+                'Cantidad de Proyectos': top_municipios.values
+            })
+            st.bar_chart(municipios_df.set_index('Municipio'))
+        else:
+            st.warning("⚠️ No hay datos suficientes para generar el mapa de calor")
+    
+    with tab4:
+        st.subheader("📊 Análisis Geográfico")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Proyectos por departamento
+            proyectos_dep = df_filtrado.groupby('DEPARTAMENTO').size().reset_index(name='Cantidad')
+            proyectos_dep = proyectos_dep.sort_values('Cantidad', ascending=True)
+            
+            fig_dep = px.bar(
+                proyectos_dep,
+                x='Cantidad',
+                y='DEPARTAMENTO',
+                orientation='h',
+                title="Proyectos por Departamento",
+                color='Cantidad',
+                color_continuous_scale='Viridis'
+            )
+            st.plotly_chart(fig_dep, use_container_width=True)
+        
+        with col2:
+            # Monto por departamento
+            monto_dep = df_filtrado.groupby('DEPARTAMENTO')['MONTO_MODIFICADO'].sum().reset_index()
+            monto_dep = monto_dep.sort_values('MONTO_MODIFICADO', ascending=True)
+            
+            fig_monto = px.bar(
+                monto_dep,
+                x='MONTO_MODIFICADO',
+                y='DEPARTAMENTO',
+                orientation='h',
+                title="Monto Invertido por Departamento",
+                color='MONTO_MODIFICADO',
+                color_continuous_scale='Blues',
+                labels={'MONTO_MODIFICADO': 'Monto Total ($)'}
+            )
+            st.plotly_chart(fig_monto, use_container_width=True)
+        
+        # Tabla detallada
+        st.subheader("📋 Resumen Detallado por Departamento")
+        resumen_dep = df_filtrado.groupby('DEPARTAMENTO').agg({
+            'NOMBRE_PROYECTO': 'count',
+            'MONTO_MODIFICADO': 'sum',
+            'AVANCE_FISICO': 'mean',
+            'AVANCE_FINANCIERO': 'mean',
+            'EMPRESA': 'nunique'
+        }).reset_index()
+        
+        resumen_dep.columns = ['Departamento', 'N° Proyectos', 'Monto Total', 
+                               'Avance Físico Prom.', 'Avance Financ. Prom.', 'N° Empresas']
+        
+        st.dataframe(
+            resumen_dep.style.format({
+                'Monto Total': '${:,.2f}',
+                'Avance Físico Prom.': '{:.1f}%',
+                'Avance Financ. Prom.': '{:.1f}%'
+            }),
+            use_container_width=True
+        )
+        
+        # Análisis por municipio
+        if len(proyectos_con_coords['MUNICIPIO'].unique()) > 5:
+            st.subheader("🏘️ Top 10 Municipios por Inversión")
+            top_municipios_monto = proyectos_con_coords.groupby('MUNICIPIO')['MONTO_MODIFICADO'].sum().nlargest(10).reset_index()
+            
+            fig_municipios = px.bar(
+                top_municipios_monto,
+                x='MONTO_MODIFICADO',
+                y='MUNICIPIO',
+                orientation='h',
+                title="Top 10 Municipios por Monto Invertido",
+                color='MONTO_MODIFICADO',
+                color_continuous_scale='Greens'
+            )
+            st.plotly_chart(fig_municipios, use_container_width=True)
+
+else:
+    if df_filtrado.empty:
+        st.info("ℹ️ No hay proyectos con los filtros seleccionados.")
+    else:
+        st.warning("⚠️ No se pudieron cargar los mapas. Verifica la instalación de folium.")
 
 # ============================================
 # TABLA DE DATOS
@@ -365,8 +687,9 @@ with st.expander("ℹ️ Información del Dashboard"):
     2. Luego elige la institución (solo muestra las que tienen proyectos en el año seleccionado)
     3. Continúa con tipo de proyecto, departamento y estatus
     4. Ajusta el rango de avance si lo deseas
-    5. Explora los gráficos y la tabla de detalle
-    6. Exporta los datos filtrados si es necesario
+    5. Explora los gráficos y los mapas interactivos
+    6. En los mapas puedes hacer zoom y hacer clic en los marcadores para ver detalles
+    7. Exporta los datos filtrados si es necesario
     
     **Nota:** Los filtros son jerárquicos - cada selección afecta las opciones disponibles en los filtros siguientes.
     """)
