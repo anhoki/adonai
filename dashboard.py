@@ -170,6 +170,7 @@ with col3:
 with col4:
     monto_total = df_filtrado['MONTO_MODIFICADO'].sum()
     st.metric("Monto Total de Contratos", f"Q{monto_total:,.2f}")
+
 st.markdown("---")
 
 # ============================================
@@ -247,10 +248,52 @@ fig_scatter.add_trace(
 fig_scatter.update_layout(showlegend=True)
 st.plotly_chart(fig_scatter, use_container_width=True)
 
+# ============================================
+# 🗺️ MAPAS INTERACTIVOS
+# ============================================
+st.header("🗺️ Visualización Geográfica de Proyectos")
+
+# Importar librerías para mapas
+try:
+    import folium
+    from streamlit_folium import folium_static
+    from folium.plugins import MarkerCluster, HeatMap
+    
+    mapas_disponibles = True
+except ImportError:
+    mapas_disponibles = False
+
+# Función para cargar archivos JSON
+def load_geojson(file_path):
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except:
+        return None
+
 if mapas_disponibles and not df_filtrado.empty:
-    # TODO el código de los mapas (tabs, etc.)
-    # con su indentación correcta
-        with tab1:
+    
+    # Cargar archivos JSON
+    geojson_departamentos = load_geojson('deptos.json')
+    
+    # Filtrar proyectos con coordenadas válidas
+    proyectos_con_coords = df_filtrado.copy()
+    proyectos_con_coords['LATITUD'] = pd.to_numeric(proyectos_con_coords['LATITUD'], errors='coerce')
+    proyectos_con_coords['LONGITUD'] = pd.to_numeric(proyectos_con_coords['LONGITUD'], errors='coerce')
+    proyectos_con_coords = proyectos_con_coords.dropna(subset=['LATITUD', 'LONGITUD'])
+    
+    # Calcular centro del mapa
+    if len(proyectos_con_coords) > 0:
+        center_lat = proyectos_con_coords['LATITUD'].mean()
+        center_lon = proyectos_con_coords['LONGITUD'].mean()
+    else:
+        center_lat = 15.5
+        center_lon = -90.25
+    
+    # Tabs
+    tab1, tab2, tab3 = st.tabs(["📍 Mapa de Proyectos", "🔥 Mapa de Calor", "📊 Análisis Geográfico"])
+    
+    with tab1:
         st.subheader("📍 Ubicación de Proyectos")
         
         if len(proyectos_con_coords) > 0:
@@ -261,7 +304,7 @@ if mapas_disponibles and not df_filtrado.empty:
                 control_scale=True
             )
             
-            # Agregar capa de departamentos si está disponible
+            # Agregar capa de departamentos
             if geojson_departamentos:
                 try:
                     folium.GeoJson(
@@ -403,11 +446,10 @@ if mapas_disponibles and not df_filtrado.empty:
             }),
             use_container_width=True
         )
+
 else:
     if df_filtrado.empty:
         st.info("ℹ️ No hay proyectos con los filtros seleccionados")
-
-
 
 # ============================================
 # TABLA DE DATOS
