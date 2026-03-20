@@ -417,20 +417,39 @@ if mapas_disponibles and not df_filtrado.empty:
             )
             st.plotly_chart(fig_dep, use_container_width=True)
         
+        with tab3:
+        st.subheader("📊 Análisis Geográfico")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            proyectos_dep = df_filtrado.groupby('DEPARTAMENTO').size().reset_index(name='Cantidad')
+            proyectos_dep = proyectos_dep.sort_values('Cantidad', ascending=True)
+            fig_dep = px.bar(
+                proyectos_dep,
+                x='Cantidad',
+                y='DEPARTAMENTO',
+                orientation='h',
+                title="Proyectos por Departamento",
+                color='Cantidad',
+                color_continuous_scale='Viridis'
+            )
+            st.plotly_chart(fig_dep, use_container_width=True)
+        
         with col2:
-    monto_dep = df_filtrado.groupby('DEPARTAMENTO')['MONTO_MODIFICADO'].sum().reset_index()
-    monto_dep = monto_dep.sort_values('MONTO_MODIFICADO', ascending=True)
-    fig_monto = px.bar(
-        monto_dep,
-        x='MONTO_MODIFICADO',
-        y='DEPARTAMENTO',
-        orientation='h',
-        title="Monto por Departamento",
-        labels={'MONTO_MODIFICADO': 'Monto Total (Q)'},
-        color='MONTO_MODIFICADO',
-        color_continuous_scale='Blues'
-    )
-    st.plotly_chart(fig_monto, use_container_width=True)
+            monto_dep = df_filtrado.groupby('DEPARTAMENTO')['MONTO_MODIFICADO'].sum().reset_index()
+            monto_dep = monto_dep.sort_values('MONTO_MODIFICADO', ascending=True)
+            fig_monto = px.bar(
+                monto_dep,
+                x='MONTO_MODIFICADO',
+                y='DEPARTAMENTO',
+                orientation='h',
+                title="Monto por Departamento",
+                labels={'MONTO_MODIFICADO': 'Monto Total (Q)'},
+                color='MONTO_MODIFICADO',
+                color_continuous_scale='Blues'
+            )
+            st.plotly_chart(fig_monto, use_container_width=True)
         
         # Tabla resumen
         st.subheader("📋 Resumen por Departamento")
@@ -449,7 +468,6 @@ if mapas_disponibles and not df_filtrado.empty:
             }),
             use_container_width=True
         )
-
 else:
     if df_filtrado.empty:
         st.info("ℹ️ No hay proyectos con los filtros seleccionados")
