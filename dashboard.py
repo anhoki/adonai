@@ -45,6 +45,42 @@ except Exception as e:
     st.info("📝 Asegúrate de que el archivo 'followingmatrix.xlsx' existe en el mismo directorio")
     st.stop()
 
+
+# ============================================
+# DIAGNÓSTICO DE COORDENADAS (TEMPORAL)
+# ============================================
+st.sidebar.markdown("---")
+st.sidebar.subheader("🔍 DIAGNÓSTICO DE COORDENADAS")
+
+# Verificar columnas
+st.sidebar.write("**Columnas de coordenadas:**")
+if 'LATITUD' in df.columns and 'LONGITUD' in df.columns:
+    st.sidebar.write("✅ LATITUD y LONGITUD encontradas")
+    
+    # Mostrar tipo de datos
+    st.sidebar.write(f"Tipo LATITUD: {df['LATITUD'].dtype}")
+    st.sidebar.write(f"Tipo LONGITUD: {df['LONGITUD'].dtype}")
+    
+    # Contar valores no nulos
+    lat_validas = df['LATITUD'].notna().sum()
+    lon_validas = df['LONGITUD'].notna().sum()
+    st.sidebar.write(f"LATITUD no nulas: {lat_validas}")
+    st.sidebar.write(f"LONGITUD no nulas: {lon_validas}")
+    
+    # Mostrar primeros valores
+    st.sidebar.write("**Primeras 5 coordenadas:**")
+    st.sidebar.dataframe(df[['LATITUD', 'LONGITUD']].head())
+    
+    # Mostrar rango de valores
+    if lat_validas > 0:
+        st.sidebar.write(f"Rango LATITUD: {df['LATITUD'].min():.4f} - {df['LATITUD'].max():.4f}")
+        st.sidebar.write(f"Rango LONGITUD: {df['LONGITUD'].min():.4f} - {df['LONGITUD'].max():.4f}")
+else:
+    st.sidebar.error("❌ No se encontraron las columnas LATITUD y/o LONGITUD")
+    st.sidebar.write("**Columnas disponibles:**")
+    st.sidebar.write(df.columns.tolist())
+
+
 # ============================================
 # FILTROS JERÁRQUICOS - AÑO PRIMERO
 # ============================================
