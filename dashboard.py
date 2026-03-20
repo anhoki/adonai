@@ -535,28 +535,26 @@ if st.sidebar.button("Exportar a CSV"):
 with st.expander("ℹ️ Información del Dashboard"):
     stats = get_summary_statistics(df_filtrado)
     st.markdown(f"""
-    **Resumen General de la Selección Actual:**
-    - Total de proyectos: {stats.get('total_proyectos', 0)}
-    - Monto total: Q{stats.get('total_monto', 0):,.2f}
-    - Avance físico promedio: {stats.get('avance_fisico_promedio', 0):.1f}%
-    - Avance financiero promedio: {stats.get('avance_financiero_promedio', 0):.1f}%
-    - Proyectos completados (≥95%): {stats.get('proyectos_completados', 0)}
-    - Proyectos críticos (<30%): {stats.get('proyectos_criticos', 0)}
-    - Empresas contratistas: {stats.get('total_empresas', 0)}
-    - Instituciones: {stats.get('total_instituciones', 0)}
-    """)
-    
-    **Cómo usar el dashboard:**
-    1. **Selecciona primero el año** - esto determina las opciones disponibles en los siguientes filtros
-    2. Luego elige la institución (solo muestra las que tienen proyectos en el año seleccionado)
-    3. Continúa con tipo de proyecto, departamento y estatus
-    4. Ajusta el rango de avance si lo deseas
-    5. Explora los gráficos y los mapas interactivos
-    6. En los mapas puedes hacer zoom y hacer clic en los marcadores para ver detalles
-    7. Exporta los datos filtrados si es necesario
-    
-    **Nota:** Los filtros son jerárquicos - cada selección afecta las opciones disponibles en los filtros siguientes.
-    """)
+**Resumen General de la Selección Actual:**
+- Total de proyectos: {stats.get('total_proyectos', 0)}
+- Monto total: Q{stats.get('total_monto', 0):,.2f}
+- Avance físico promedio: {stats.get('avance_fisico_promedio', 0):.1f}%
+- Avance financiero promedio: {stats.get('avance_financiero_promedio', 0):.1f}%
+- Proyectos completados (≥95%): {stats.get('proyectos_completados', 0)}
+- Proyectos críticos (<30%): {stats.get('proyectos_criticos', 0)}
+- Empresas contratistas: {stats.get('total_empresas', 0)}
+- Instituciones: {stats.get('total_instituciones', 0)}
+
+**Cómo usar el dashboard:**
+1. **Selecciona primero el año** - esto determina las opciones disponibles
+2. Luego elige la institución
+3. Continúa con tipo de proyecto, departamento y estatus
+4. Ajusta el rango de avance si lo deseas
+5. Explora los gráficos y los mapas interactivos
+6. Exporta los datos filtrados si es necesario
+
+**Nota:** Los filtros son jerárquicos - cada selección afecta las opciones disponibles.
+""")
 
 st.markdown("---")
 st.markdown(f"📅 Última actualización: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
